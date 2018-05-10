@@ -14,7 +14,7 @@ var constants = require('../core/constants');
 var color_conversion = require('./color_conversion');
 
 /**
- * Each color stores the color mode and level maxes that applied at the
+ * Each color stores the color mode and level maxes that were applied at the
  * time of its construction. These are used to interpret the input arguments
  * (at construction and later for that instance of color) and to format the
  * output e.g. when saturation() is requested.
@@ -50,7 +50,7 @@ p5.Color = function(pInst, vals) {
 };
 
 /**
- * This function returns the color formatted as a string. This can be useful
+ * Returns the color formatted as a string. This can be useful
  * for debugging, or for using p5.js with other libraries.
  * @method toString
  * @param {String} [format] How the color string will be formatted.
@@ -246,6 +246,7 @@ p5.Color.prototype.toString = function(format) {
 };
 
 /**
+ * Sets the red value of a color.
  * @method setRed
  * @param {Number} red the new red value
  * @example
@@ -273,6 +274,7 @@ p5.Color.prototype.setRed = function(new_red) {
 };
 
 /**
+ * Sets the green value of a color.
  * @method setGreen
  * @param {Number} green the new green value
  * @example
@@ -300,6 +302,7 @@ p5.Color.prototype.setGreen = function(new_green) {
 };
 
 /**
+ * Sets the blue value of a color.
  * @method setBlue
  * @param {Number} blue the new blue value
  * @example
@@ -327,6 +330,7 @@ p5.Color.prototype.setBlue = function(new_blue) {
 };
 
 /**
+ * Sets the alpha value of a color.
  * @method setAlpha
  * @param {Number} alpha the new alpha value
  * @example
