@@ -7,7 +7,7 @@
 
 'use strict';
 
-var p5 = require('../core/core');
+var p5 = require('../core/main');
 
 /**
  * Creates an ambient light with a color
@@ -19,7 +19,7 @@ var p5 = require('../core/core');
  *                                 relative to the current color range
  * @param  {Number}        v3      blue or brightness value
  *                                 relative to the current color range
- * @param  {Number}        [alpha]
+ * @param  {Number}        [alpha] the alpha value
  * @chainable
  *
  * @example
@@ -134,7 +134,7 @@ p5.prototype.ambientLight = function(v1, v2, v3, a) {
 /**
  * @method directionalLight
  * @param  {Number[]|String|p5.Color} color   color Array, CSS color string,
- *                                             or p5.Color value
+ *                                             or <a href="#/p5.Color">p5.Color</a> value
  * @param  {Number}                   x       x axis direction
  * @param  {Number}                   y       y axis direction
  * @param  {Number}                   z       z axis direction
@@ -164,7 +164,12 @@ p5.prototype.directionalLight = function(v1, v2, v3, x, y, z) {
   var shader = this._renderer._useLightShader();
 
   //@TODO: check parameters number
-  var color = this.color.apply(this, [v1, v2, v3]);
+  var color;
+  if (v1 instanceof p5.Color) {
+    color = v1;
+  } else {
+    color = this.color(v1, v2, v3);
+  }
 
   var _x, _y, _z;
   var v = arguments[arguments.length - 1];
@@ -258,7 +263,7 @@ p5.prototype.directionalLight = function(v1, v2, v3, x, y, z) {
 /**
  * @method pointLight
  * @param  {Number[]|String|p5.Color} color   color Array, CSS color string,
- * or p5.Color value
+ * or <a href="#/p5.Color">p5.Color</a> value
  * @param  {Number}                   x
  * @param  {Number}                   y
  * @param  {Number}                   z
@@ -275,7 +280,12 @@ p5.prototype.pointLight = function(v1, v2, v3, x, y, z) {
   this._assert3d('pointLight');
   p5._validateParameters('pointLight', arguments);
   //@TODO: check parameters number
-  var color = this._renderer._pInst.color.apply(this, [v1, v2, v3]);
+  var color;
+  if (v1 instanceof p5.Color) {
+    color = v1;
+  } else {
+    color = this.color(v1, v2, v3);
+  }
 
   var _x, _y, _z;
   var v = arguments[arguments.length - 1];

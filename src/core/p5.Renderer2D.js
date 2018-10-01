@@ -1,7 +1,6 @@
 'use strict';
 
-var p5 = require('./core');
-var canvas = require('./canvas');
+var p5 = require('./main');
 var constants = require('./constants');
 var filters = require('../image/filters');
 
@@ -61,6 +60,8 @@ p5.Renderer2D.prototype.background = function() {
     this._setFill(curFill);
   }
   this.drawingContext.restore();
+
+  this._pInst._pixelsDirty = true;
 };
 
 p5.Renderer2D.prototype.clear = function() {
@@ -68,6 +69,8 @@ p5.Renderer2D.prototype.clear = function() {
   this.resetMatrix();
   this.drawingContext.clearRect(0, 0, this.width, this.height);
   this.drawingContext.restore();
+
+  this._pInst._pixelsDirty = true;
 };
 
 p5.Renderer2D.prototype.fill = function() {
@@ -108,12 +111,16 @@ p5.Renderer2D.prototype.image = function(
     if (!cnv) {
       cnv = img.canvas || img.elt;
     }
+    var s = 1;
+    if (img.width && img.width > 0) {
+      s = cnv.width / img.width;
+    }
     this.drawingContext.drawImage(
       cnv,
-      sx,
-      sy,
-      sWidth,
-      sHeight,
+      s * sx,
+      s * sy,
+      s * sWidth,
+      s * sHeight,
       dx,
       dy,
       dWidth,
@@ -124,6 +131,8 @@ p5.Renderer2D.prototype.image = function(
       throw e;
     }
   }
+
+  this._pInst._pixelsDirty = true;
 };
 
 p5.Renderer2D.prototype._getTintedImageCanvas = function(img) {
@@ -199,6 +208,8 @@ p5.Renderer2D.prototype.copy = function() {
     throw new Error('Signature not supported');
   }
   p5.Renderer2D._copyHelper(this, srcImage, sx, sy, sw, sh, dx, dy, dw, dh);
+
+  this._pInst._pixelsDirty = true;
 };
 
 p5.Renderer2D._copyHelper = function(
@@ -229,29 +240,23 @@ p5.Renderer2D._copyHelper = function(
 };
 
 p5.Renderer2D.prototype.get = function(x, y, w, h) {
-  if (
-    x === undefined &&
-    y === undefined &&
-    w === undefined &&
-    h === undefined
-  ) {
-    x = 0;
-    y = 0;
-    w = this.width;
-    h = this.height;
-  } else if (w === undefined && h === undefined) {
-    w = 1;
-    h = 1;
+  if (typeof w === 'undefined' && typeof h === 'undefined') {
+    if (typeof x === 'undefined' && typeof y === 'undefined') {
+      x = y = 0;
+      w = this.width;
+      h = this.height;
+    } else {
+      w = h = 1;
+    }
   }
 
   // if the section does not overlap the canvas
-  if (x + w < 0 || y + h < 0 || x > this.width || y > this.height) {
+  if (x + w < 0 || y + h < 0 || x >= this.width || y >= this.height) {
+    // TODO: is this valid for w,h > 1 ?
     return [0, 0, 0, 255];
   }
 
   var ctx = this._pInst || this;
-  ctx.loadPixels();
-
   var pd = ctx._pixelDensity;
 
   // round down to get integer numbers
@@ -263,9 +268,20 @@ p5.Renderer2D.prototype.get = function(x, y, w, h) {
   var sx = x * pd;
   var sy = y * pd;
   if (w === 1 && h === 1 && !(this instanceof p5.RendererGL)) {
-    var imageData = this.drawingContext.getImageData(sx, sy, 1, 1).data;
-    //imageData = [0,0,0,0];
-    return [imageData[0], imageData[1], imageData[2], imageData[3]];
+    var imageData, index;
+    if (ctx._pixelsDirty) {
+      imageData = this.drawingContext.getImageData(sx, sy, 1, 1).data;
+      index = 0;
+    } else {
+      imageData = ctx.pixels;
+      index = (sx + sy * this.width * pd) * 4;
+    }
+    return [
+      imageData[index + 0],
+      imageData[index + 1],
+      imageData[index + 2],
+      imageData[index + 3]
+    ];
   } else {
     //auto constrain the width and height to
     //dimensions of the source image
@@ -285,6 +301,9 @@ p5.Renderer2D.prototype.get = function(x, y, w, h) {
 
 p5.Renderer2D.prototype.loadPixels = function() {
   var ctx = this._pInst || this; // if called by p5.Image
+  if (!ctx._pixelsDirty) return;
+  ctx._pixelsDirty = false;
+
   var pd = ctx._pixelDensity;
   var w = this.width * pd;
   var h = this.height * pd;
@@ -305,8 +324,8 @@ p5.Renderer2D.prototype.set = function(x, y, imgOrCol) {
     this.drawingContext.setTransform(1, 0, 0, 1, 0, 0);
     this.drawingContext.scale(ctx._pixelDensity, ctx._pixelDensity);
     this.drawingContext.drawImage(imgOrCol.canvas, x, y);
-    this.loadPixels.call(ctx);
     this.drawingContext.restore();
+    ctx._pixelsDirty = true;
   } else {
     var r = 0,
       g = 0,
@@ -316,7 +335,7 @@ p5.Renderer2D.prototype.set = function(x, y, imgOrCol) {
       4 *
       (y * ctx._pixelDensity * (this.width * ctx._pixelDensity) +
         x * ctx._pixelDensity);
-    if (!ctx.imageData) {
+    if (!ctx.imageData || ctx._pixelsDirty) {
       ctx.loadPixels.call(ctx);
     }
     if (typeof imgOrCol === 'number') {
@@ -382,6 +401,10 @@ p5.Renderer2D.prototype.updatePixels = function(x, y, w, h) {
   h *= pd;
 
   this.drawingContext.putImageData(ctx.imageData, x, y, 0, 0, w, h);
+
+  if (x !== 0 || y !== 0 || w !== this.width || h !== this.height) {
+    ctx._pixelsDirty = true;
+  }
 };
 
 //////////////////////////////////////////////
@@ -425,12 +448,14 @@ p5.Renderer2D.prototype._acuteArcToBezier = function _acuteArcToBezier(
 
 p5.Renderer2D.prototype.arc = function(x, y, w, h, start, stop, mode) {
   var ctx = this.drawingContext;
-  var vals = canvas.arcModeAdjust(x, y, w, h, this._ellipseMode);
-  var rx = vals.w / 2.0;
-  var ry = vals.h / 2.0;
+  var rx = w / 2.0;
+  var ry = h / 2.0;
   var epsilon = 0.00001; // Smallest visible angle on displays up to 4K.
   var arcToDraw = 0;
   var curves = [];
+
+  x += rx;
+  y += ry;
 
   // Create curves
   while (stop - start > epsilon) {
@@ -444,15 +469,15 @@ p5.Renderer2D.prototype.arc = function(x, y, w, h, start, stop, mode) {
     ctx.beginPath();
     curves.forEach(function(curve, index) {
       if (index === 0) {
-        ctx.moveTo(vals.x + curve.ax * rx, vals.y + curve.ay * ry);
+        ctx.moveTo(x + curve.ax * rx, y + curve.ay * ry);
       }
       // prettier-ignore
-      ctx.bezierCurveTo(vals.x + curve.bx * rx, vals.y + curve.by * ry,
-                          vals.x + curve.cx * rx, vals.y + curve.cy * ry,
-                          vals.x + curve.dx * rx, vals.y + curve.dy * ry);
+      ctx.bezierCurveTo(x + curve.bx * rx, y + curve.by * ry,
+                          x + curve.cx * rx, y + curve.cy * ry,
+                          x + curve.dx * rx, y + curve.dy * ry);
     });
     if (mode === constants.PIE || mode == null) {
-      ctx.lineTo(vals.x, vals.y);
+      ctx.lineTo(x, y);
     }
     ctx.closePath();
     ctx.fill();
@@ -463,15 +488,15 @@ p5.Renderer2D.prototype.arc = function(x, y, w, h, start, stop, mode) {
     ctx.beginPath();
     curves.forEach(function(curve, index) {
       if (index === 0) {
-        ctx.moveTo(vals.x + curve.ax * rx, vals.y + curve.ay * ry);
+        ctx.moveTo(x + curve.ax * rx, y + curve.ay * ry);
       }
       // prettier-ignore
-      ctx.bezierCurveTo(vals.x + curve.bx * rx, vals.y + curve.by * ry,
-                          vals.x + curve.cx * rx, vals.y + curve.cy * ry,
-                          vals.x + curve.dx * rx, vals.y + curve.dy * ry);
+      ctx.bezierCurveTo(x + curve.bx * rx, y + curve.by * ry,
+                          x + curve.cx * rx, y + curve.cy * ry,
+                          x + curve.dx * rx, y + curve.dy * ry);
     });
     if (mode === constants.PIE) {
-      ctx.lineTo(vals.x, vals.y);
+      ctx.lineTo(x, y);
       ctx.closePath();
     } else if (mode === constants.CHORD) {
       ctx.closePath();
@@ -842,7 +867,7 @@ p5.Renderer2D.prototype.endShape = function(
         this.drawingContext.moveTo(v[0], v[1]);
         this.drawingContext.lineTo(vertices[i + 1][0], vertices[i + 1][1]);
         this.drawingContext.lineTo(vertices[i + 2][0], vertices[i + 2][1]);
-        this.drawingContext.lineTo(v[0], v[1]);
+        this.drawingContext.closePath();
         if (this._doFill) {
           this._pInst.fill(vertices[i + 2][5]);
           this.drawingContext.fill();
@@ -851,7 +876,6 @@ p5.Renderer2D.prototype.endShape = function(
           this._pInst.stroke(vertices[i + 2][6]);
           this.drawingContext.stroke();
         }
-        this.drawingContext.closePath();
       }
     } else if (shapeKind === constants.TRIANGLE_STRIP) {
       for (i = 0; i + 1 < numVerts; i++) {
@@ -973,6 +997,8 @@ p5.Renderer2D.prototype.endShape = function(
   if (closeShape) {
     vertices.pop();
   }
+
+  this._pInst._pixelsDirty = true;
   return this;
 };
 //////////////////////////////////////////////
@@ -1086,6 +1112,8 @@ p5.Renderer2D.prototype._doFillStrokeClose = function() {
     this.drawingContext.stroke();
   }
   this.drawingContext.closePath();
+
+  this._pInst._pixelsDirty = true;
 };
 
 //////////////////////////////////////////////
@@ -1140,119 +1168,20 @@ p5.Renderer2D.prototype.translate = function(x, y) {
 //////////////////////////////////////////////
 
 p5.Renderer2D.prototype.text = function(str, x, y, maxWidth, maxHeight) {
-  var p = this._pInst,
-    cars,
-    n,
-    ii,
-    jj,
-    line,
-    testLine,
-    testWidth,
-    words,
-    totalHeight,
-    baselineHacked,
-    finalMaxHeight = Number.MAX_VALUE;
+  var baselineHacked;
 
   // baselineHacked: (HACK)
   // A temporary fix to conform to Processing's implementation
   // of BASELINE vertical alignment in a bounding box
 
-  if (!(this._doFill || this._doStroke)) {
-    return;
-  }
-
-  if (typeof str === 'undefined') {
-    return;
-  } else if (typeof str !== 'string') {
-    str = str.toString();
-  }
-
-  str = str.replace(/(\t)/g, '  ');
-  cars = str.split('\n');
-
-  if (typeof maxWidth !== 'undefined') {
-    totalHeight = 0;
-    for (ii = 0; ii < cars.length; ii++) {
-      line = '';
-      words = cars[ii].split(' ');
-      for (n = 0; n < words.length; n++) {
-        testLine = line + words[n] + ' ';
-        testWidth = this.textWidth(testLine);
-        if (testWidth > maxWidth) {
-          line = words[n] + ' ';
-          totalHeight += p.textLeading();
-        } else {
-          line = testLine;
-        }
-      }
-    }
-
-    if (this._rectMode === constants.CENTER) {
-      x -= maxWidth / 2;
-      y -= maxHeight / 2;
-    }
-
-    switch (this.drawingContext.textAlign) {
-      case constants.CENTER:
-        x += maxWidth / 2;
-        break;
-      case constants.RIGHT:
-        x += maxWidth;
-        break;
-    }
-
-    if (typeof maxHeight !== 'undefined') {
-      switch (this.drawingContext.textBaseline) {
-        case constants.BOTTOM:
-          y += maxHeight - totalHeight;
-          break;
-        case constants._CTX_MIDDLE: // CENTER?
-          y += (maxHeight - totalHeight) / 2;
-          break;
-        case constants.BASELINE:
-          baselineHacked = true;
-          this.drawingContext.textBaseline = constants.TOP;
-          break;
-      }
-
-      // remember the max-allowed y-position for any line (fix to #928)
-      finalMaxHeight = y + maxHeight - p.textAscent();
-    }
-
-    for (ii = 0; ii < cars.length; ii++) {
-      line = '';
-      words = cars[ii].split(' ');
-      for (n = 0; n < words.length; n++) {
-        testLine = line + words[n] + ' ';
-        testWidth = this.textWidth(testLine);
-        if (testWidth > maxWidth && line.length > 0) {
-          this._renderText(p, line, x, y, finalMaxHeight);
-          line = words[n] + ' ';
-          y += p.textLeading();
-        } else {
-          line = testLine;
-        }
-      }
-
-      this._renderText(p, line, x, y, finalMaxHeight);
-      y += p.textLeading();
-    }
-  } else {
-    // Offset to account for vertically centering multiple lines of text - no
-    // need to adjust anything for vertical align top or baseline
-    var offset = 0,
-      vAlign = p.textAlign().vertical;
-    if (vAlign === constants.CENTER) {
-      offset = (cars.length - 1) * p.textLeading() / 2;
-    } else if (vAlign === constants.BOTTOM) {
-      offset = (cars.length - 1) * p.textLeading();
-    }
-
-    for (jj = 0; jj < cars.length; jj++) {
-      this._renderText(p, cars[jj], x, y - offset, finalMaxHeight);
-      y += p.textLeading();
+  if (typeof maxWidth !== 'undefined' && typeof maxHeight !== 'undefined') {
+    if (this.drawingContext.textBaseline === constants.BASELINE) {
+      baselineHacked = true;
+      this.drawingContext.textBaseline = constants.TOP;
     }
   }
+
+  var p = p5.Renderer.prototype.text.apply(this, arguments);
 
   if (baselineHacked) {
     this.drawingContext.textBaseline = constants.BASELINE;
@@ -1292,6 +1221,7 @@ p5.Renderer2D.prototype._renderText = function(p, line, x, y, maxY) {
 
   p.pop();
 
+  this._pInst._pixelsDirty = true;
   return p;
 };
 
@@ -1301,44 +1231,6 @@ p5.Renderer2D.prototype.textWidth = function(s) {
   }
 
   return this.drawingContext.measureText(s).width;
-};
-
-p5.Renderer2D.prototype.textAlign = function(h, v) {
-  if (typeof h !== 'undefined') {
-    if (
-      h === constants.LEFT ||
-      h === constants.RIGHT ||
-      h === constants.CENTER
-    ) {
-      this.drawingContext.textAlign = h;
-    }
-
-    if (
-      v === constants.TOP ||
-      v === constants.BOTTOM ||
-      v === constants.CENTER ||
-      v === constants.BASELINE
-    ) {
-      if (v === constants.CENTER) {
-        this.drawingContext.textBaseline = constants._CTX_MIDDLE;
-      } else {
-        this.drawingContext.textBaseline = v;
-      }
-    }
-
-    return this._pInst;
-  } else {
-    var valign = this.drawingContext.textBaseline;
-
-    if (valign === constants._CTX_MIDDLE) {
-      valign = constants.CENTER;
-    }
-
-    return {
-      horizontal: this.drawingContext.textAlign,
-      vertical: valign
-    };
-  }
 };
 
 p5.Renderer2D.prototype._applyTextProperties = function() {
@@ -1361,6 +1253,13 @@ p5.Renderer2D.prototype._applyTextProperties = function() {
     (this._textSize || 12) +
     'px ' +
     (font || 'sans-serif');
+
+  this.drawingContext.textAlign = this._textAlign;
+  if (this._textBaseline === constants.CENTER) {
+    this.drawingContext.textBaseline = constants._CTX_MIDDLE;
+  } else {
+    this.drawingContext.textBaseline = this._textBaseline;
+  }
 
   return p;
 };

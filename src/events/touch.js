@@ -7,7 +7,7 @@
 
 'use strict';
 
-var p5 = require('../core/core');
+var p5 = require('../core/main');
 
 /**
  * The system variable touches[] contains an array of the positions of all
@@ -73,13 +73,14 @@ function getTouchInfo(canvas, w, h, e, i) {
 
 /**
  * The touchStarted() function is called once after every time a touch is
- * registered. If no touchStarted() function is defined, the mousePressed()
+ * registered. If no <a href="#/p5/touchStarted">touchStarted()</a> function is defined, the <a href="#/p5/mousePressed">mousePressed()</a>
  * function will be called instead if it is defined.<br><br>
  * Browsers may have different default behaviors attached to various touch
  * events. To prevent any default behavior for this event, add "return false"
  * to the end of the method.
  *
  * @method touchStarted
+ * @param  {Object} [event] optional TouchEvent callback argument.
  * @example
  * <div>
  * <code>
@@ -111,6 +112,16 @@ function getTouchInfo(canvas, w, h, e, i) {
  * </code>
  * </div>
  *
+ * <div class="norender">
+ * <code>
+ * // returns a TouchEvent object
+ * // as a callback argument
+ * function touchStarted(event) {
+ *   console.log(event);
+ * }
+ * </code>
+ * </div>
+ *
  * @alt
  * 50x50 black rect turns white with touch event.
  * no image displayed
@@ -121,6 +132,7 @@ p5.prototype._ontouchstart = function(e) {
   this._setProperty('mouseIsPressed', true);
   this._updateTouchCoords(e);
   this._updateNextMouseCoords(e);
+  this._updateMouseCoords(); // reset pmouseXY at the start of each touch event
   if (typeof context.touchStarted === 'function') {
     executeDefault = context.touchStarted(e);
     if (executeDefault === false) {
@@ -135,14 +147,15 @@ p5.prototype._ontouchstart = function(e) {
 };
 
 /**
- * The touchMoved() function is called every time a touch move is registered.
- * If no touchMoved() function is defined, the mouseDragged() function will
+ * The <a href="#/p5/touchMoved">touchMoved()</a> function is called every time a touch move is registered.
+ * If no <a href="#/p5/touchMoved">touchMoved()</a> function is defined, the <a href="#/p5/mouseDragged">mouseDragged()</a> function will
  * be called instead if it is defined.<br><br>
  * Browsers may have different default behaviors attached to various touch
  * events. To prevent any default behavior for this event, add "return false"
  * to the end of the method.
  *
  * @method touchMoved
+ * @param  {Object} [event] optional TouchEvent callback argument.
  * @example
  * <div>
  * <code>
@@ -173,6 +186,16 @@ p5.prototype._ontouchstart = function(e) {
  * </code>
  * </div>
  *
+ * <div class="norender">
+ * <code>
+ * // returns a TouchEvent object
+ * // as a callback argument
+ * function touchMoved(event) {
+ *   console.log(event);
+ * }
+ * </code>
+ * </div>
+ *
  * @alt
  * 50x50 black rect turns lighter with touch until white. resets
  * no image displayed
@@ -197,14 +220,15 @@ p5.prototype._ontouchmove = function(e) {
 };
 
 /**
- * The touchEnded() function is called every time a touch ends. If no
- * touchEnded() function is defined, the mouseReleased() function will be
+ * The <a href="#/p5/touchEnded">touchEnded()</a> function is called every time a touch ends. If no
+ * <a href="#/p5/touchEnded">touchEnded()</a> function is defined, the <a href="#/p5/mouseReleased">mouseReleased()</a> function will be
  * called instead if it is defined.<br><br>
  * Browsers may have different default behaviors attached to various touch
  * events. To prevent any default behavior for this event, add "return false"
  * to the end of the method.
  *
  * @method touchEnded
+ * @param  {Object} [event] optional TouchEvent callback argument.
  * @example
  * <div>
  * <code>
@@ -232,6 +256,16 @@ p5.prototype._ontouchmove = function(e) {
  *   ellipse(mouseX, mouseY, 5, 5);
  *   // prevent default
  *   return false;
+ * }
+ * </code>
+ * </div>
+ *
+ * <div class="norender">
+ * <code>
+ * // returns a TouchEvent object
+ * // as a callback argument
+ * function touchEnded(event) {
+ *   console.log(event);
  * }
  * </code>
  * </div>
